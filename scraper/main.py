@@ -1,8 +1,11 @@
 import requests
+from bs4 import BeautifulSoup
 
 
-if __name__ == '__main__':
-    response_list = requests.get('https://www3.nhk.or.jp/news/easy/news-list.json')
-    response_list.encoding = 'utf-8'
+response = requests.get(
+    'https://www3.nhk.or.jp/news/easy/k10014352591000/k10014352591000.html'
+)
+response.encoding = 'utf-8'
 
-    data = response_list.json()
+page_data = BeautifulSoup(response.content, 'html.parser')
+print(page_data.find('div', {'id': 'js-article-body'}))
