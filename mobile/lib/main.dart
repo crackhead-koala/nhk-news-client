@@ -1,9 +1,9 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:ruby_text/ruby_text.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'package:nhk_news_easy_client/mock_data.dart';
 
 void main() => runApp(const App());
 
@@ -33,9 +33,7 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    List<dynamic> newsArticleData = readJsonFile(
-      '/Users/sergey/Documents/temp/nhk-news-client/dump/top-list-processed.json',
-    ).sublist(0, 30);
+    List<dynamic> newsArticleData = jsonData;
 
     List<Widget> articleCards = [];
     for (Map articleData in newsArticleData) {
@@ -209,17 +207,22 @@ class _NHKArticleCardState extends State<NHKArticleCard> {
                       ),
                     ),
                   ),
-            ListTile(
-              title: RubyText(
-                widget.titleData,
-                overflow:
-                    _isCollapsed ? TextOverflow.ellipsis : TextOverflow.visible,
-              ),
-              trailing: IconButton(
-                icon: Icon(
-                  _isCollapsed ? Icons.expand_more : Icons.expand_less,
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: ListTile(
+                title: RubyText(
+                  widget.titleData,
+                  style: Theme.of(context).textTheme.titleLarge,
+                  overflow: _isCollapsed
+                      ? TextOverflow.ellipsis
+                      : TextOverflow.visible,
                 ),
-                onPressed: () => toggleCollapsedState(),
+                trailing: IconButton(
+                  icon: Icon(
+                    _isCollapsed ? Icons.expand_more : Icons.expand_less,
+                  ),
+                  onPressed: () => toggleCollapsedState(),
+                ),
               ),
             ),
           ],
@@ -230,31 +233,35 @@ class _NHKArticleCardState extends State<NHKArticleCard> {
   }
 }
 
-List<dynamic> readJsonFile(String filePath) {
-  var input = File(filePath).readAsStringSync();
-  var map = jsonDecode(input);
-  return map;
-}
-
-// TODO: add day of week
 String isoDateTimeToJapanese(String isoDateTime, {bool singleLine = false}) {
   // 2024年2月16日 (金) 16時00分
-  List<String> dateTime = isoDateTime.split(' ');
-  List<String> date = dateTime[0].split('-');
-  List<String> time = dateTime[1].split(':');
-  if (singleLine) {
-    return '${date[0]}年${date[1]}月${date[2]}日 ${time[0]}時${time[1]}分';
-  }
-  return '${date[0]}年${date[1]}月${date[2]}日\n${time[0]}時${time[1]}分';
+  final DateTime dateDime = DateTime.parse(isoDateTime);
+
+  final String weekdayJapanese = switch (dateDime.weekday) {
+    DateTime.sunday => '日',
+    DateTime.monday => '月',
+    DateTime.tuesday => '火',
+    DateTime.wednesday => '水',
+    DateTime.thursday => '木',
+    DateTime.friday => '金',
+    DateTime.saturday => '土',
+    _ => throw Exception('This is unreachable')
+  };
+
+  final DateFormat formatter = DateFormat(
+    'yyyy年MM月dd日 ($weekdayJapanese)${singleLine ? ' ' : '\n'}HH時mm分',
+  );
+
+  return formatter.format(dateDime);
 }
 
 // TODO: use web view inside bottom sheet
 // https://medium.com/@tsung-wei_hsu/flutter-how-to-build-draggable-bottom-sheet-like-google-maps-1165f5b07366
 void openURLInBrowser(String url) async {
   final uri = Uri.parse(url);
-  if (await canLaunchUrl(uri)) {
+  try {
     await launchUrl(uri);
-  } else {
-    throw Exception('Could not open URL: $url.');
+  } catch (e) {
+    throw Exception('Could not open URL: $url: $e');
   }
 }
