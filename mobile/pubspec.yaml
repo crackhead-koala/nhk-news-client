@@ -38,6 +38,7 @@ dependencies:
   ruby_text: ^3.0.3
   url_launcher: ^6.2.4
   webview_flutter: ^4.7.0
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
