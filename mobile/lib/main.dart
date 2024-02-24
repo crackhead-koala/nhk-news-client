@@ -3,9 +3,13 @@ import 'package:intl/intl.dart';
 import 'package:ruby_text/ruby_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:nhk_news_easy_client/mock_data.dart';
+import 'package:pocketbase/pocketbase.dart';
 
-void main() => runApp(const App());
+final pbClient = PocketBase('http://0.0.0.0:8090');
+
+void main() {
+  runApp(const App());
+}
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -26,56 +30,151 @@ class App extends StatelessWidget {
   }
 }
 
-class HomePage extends StatelessWidget {
+List<NHKArticleCard> buildArticleDataList(
+    ResultList<RecordModel> newsArticleData) {
+  final List<Map<String, dynamic>> newsArticleDataJson =
+      newsArticleData.toJson()['items'];
+  List<NHKArticleCard> articleCards = [];
+
+  for (Map articleData in newsArticleDataJson) {
+    List<RubyTextData> articleTitleData = [];
+
+    for (Map textChunk in articleData['title_with_ruby_processed']) {
+      if (textChunk['ruby'] != null) {
+        articleTitleData.add(
+          RubyTextData(textChunk['text'], ruby: textChunk['ruby']),
+        );
+      } else {
+        List<String> glyphs = textChunk['text'].split('');
+        for (String glyph in glyphs) {
+          articleTitleData.add(
+            RubyTextData(glyph),
+          );
+        }
+      }
+    }
+
+    articleCards.add(
+      NHKArticleCard(
+        titleData: articleTitleData,
+        dateString: articleData['news_prearranged_time'],
+        articleURL: articleData['news_url'],
+        articleImageURL: articleData['has_news_web_image']
+            ? articleData['news_web_image_uri']
+            : null,
+      ),
+    );
+  }
+
+  return articleCards;
+}
+
+Future<ResultList<RecordModel>> getPaginatedArticleData({
+  int page = 1,
+  int perPage = 30,
+  bool skipTotal = false,
+  String? expand,
+  String? filter,
+  String? sort,
+  String? fields,
+  Map<String, dynamic> query = const {},
+  Map<String, String> headers = const {},
+}) async {
+  await pbClient.admins.authWithPassword('app@mail.com', 'qwerty8000');
+  final data = await pbClient.collection('top_list').getList(
+        page: page,
+        perPage: perPage,
+        skipTotal: skipTotal,
+        expand: expand,
+        filter: filter,
+        sort: sort,
+        fields: fields,
+        query: query,
+        headers: headers,
+      );
+  return data;
+}
+
+class HomePage extends StatefulWidget {
+  final String title;
+
   const HomePage({super.key, required this.title});
 
-  final String title;
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  int _currentPage = 1;
+  bool _isLoadingArticles = false;
+  List<NHKArticleCard> loadedArticleCards = [];
+
+  void incrementCurrentPage() {
+    setState(() {
+      _currentPage++;
+    });
+  }
+
+  void setLoadingStateStart() {
+    setState(() {
+      _isLoadingArticles = true;
+    });
+  }
+
+  void setLoadingStateFinish() {
+    setState(() {
+      _isLoadingArticles = false;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    setLoadingStateStart();
+    loadNextArticlePage();
+  }
+
+  void loadNextArticlePage() {
+    setState(() {
+      setLoadingStateStart();
+      getPaginatedArticleData(page: _currentPage, perPage: 10).then(
+        (articleData) {
+          final newArticleCards = buildArticleDataList(articleData);
+          for (final articleCard in newArticleCards) {
+            loadedArticleCards.add(articleCard);
+          }
+          setLoadingStateFinish();
+        },
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    List<dynamic> newsArticleData = jsonData;
-
-    List<Widget> articleCards = [];
-    for (Map articleData in newsArticleData) {
-      List<RubyTextData> articleTitleData = [];
-
-      for (Map textChunk in articleData['title_with_ruby_processed']) {
-        if (textChunk['ruby'] != null) {
-          articleTitleData.add(
-            RubyTextData(textChunk['text'], ruby: textChunk['ruby']),
-          );
-        } else {
-          List<String> glyphs = textChunk['text'].split('');
-          for (String glyph in glyphs) {
-            articleTitleData.add(
-              RubyTextData(glyph),
-            );
-          }
-        }
-      }
-
-      articleCards.add(
-        NHKArticleCard(
-          titleData: articleTitleData,
-          dateString: articleData['news_prearranged_time'],
-          articleURL: articleData['news_url'],
-          articleImageURL: articleData['has_news_web_image']
-              ? articleData['news_web_image_uri']
-              : null,
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(title),
+        title: Text(widget.title),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(8.0),
-        // mainAxisAlignment: MainAxisAlignment.start,
-        children: articleCards,
-      ),
+      body: _isLoadingArticles && _currentPage == 1
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : ListView.builder(
+              itemCount: loadedArticleCards.length + 1,
+              itemBuilder: (BuildContext context, int index) {
+                if (index == loadedArticleCards.length) {
+                  return TextButton(
+                    onPressed: () {
+                      incrementCurrentPage();
+                      loadNextArticlePage();
+                    },
+                    child: const Text('Load more'),
+                  );
+                }
+                return loadedArticleCards[index];
+              },
+            ),
     );
   }
 }
